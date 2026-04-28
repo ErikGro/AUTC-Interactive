@@ -1,0 +1,412 @@
+import { useRef } from 'react'
+import type { CurvePoint, SortedAPPoint } from '../lib/metrics'
+import { MATCHER_LABELS, type MatcherKind } from '../lib/matchers'
+
+export type ThresholdMode = 'discrete' | 'scene'
+
+type Props = {
+  curve: CurvePoint[]
+  autc: number
+  sortedApCurve: SortedAPPoint[]
+  sortedAp: number
+  hoverThreshold: number | null
+  pinnedThreshold: number | null
+  pqAtActive: number | null
+  renderMode: 'linear' | 'step'
+  showHint: boolean
+  thresholdMode: ThresholdMode
+  onThresholdModeChange: (mode: ThresholdMode) => void
+  matcherKind: MatcherKind
+  onMatcherChange: (kind: MatcherKind) => void
+  onHover: (t: number | null) => void
+  onPin: (t: number) => void
+  onClearPin: () => void
+}
+
+const W = 600
+const H = 360
+const PAD_L = 50
+const PAD_R = 30
+const PAD_T = 30
+const PAD_B = 30
+const ACCENT = '#0ea5e9'
+const SORTED_AP = '#f59e0b'
+const PIN = '#6366f1'
+const HOVER = '#94a3b8'
+
+export const CurveChart = ({
+  curve,
+  autc,
+  sortedApCurve,
+  sortedAp,
+  hoverThreshold,
+  pinnedThreshold,
+  pqAtActive,
+  renderMode,
+  showHint,
+  thresholdMode,
+  onThresholdModeChange,
+  matcherKind,
+  onMatcherChange,
+  onHover,
+  onPin,
+  onClearPin,
+}: Props) => {
+  const svgRef = useRef<SVGSVGElement>(null)
+  const plotW = W - PAD_L - PAD_R
+  const plotH = H - PAD_T - PAD_B
+
+  const x = (t: number) => PAD_L + t * plotW
+  const y = (v: number) => PAD_T + (1 - v) * plotH
+
+  const snapToCurve = (t: number): number => {
+    if (curve.length === 0) return t
+    let best = curve[0].threshold
+    let bestDist = Math.abs(t - best)
+    for (let i = 1; i < curve.length; i++) {
+      const d = Math.abs(t - curve[i].threshold)
+      if (d < bestDist) {
+        bestDist = d
+        best = curve[i].threshold
+      }
+    }
+    return best
+  }
+
+  const thresholdFromClientX = (clientX: number): number | null => {
+    const svg = svgRef.current
+    if (!svg) return null
+    const pt = svg.createSVGPoint()
+    pt.x = clientX
+    pt.y = 0
+    const ctm = svg.getScreenCTM()
+    if (!ctm) return null
+    const local = pt.matrixTransform(ctm.inverse())
+    const tRaw = (local.x - PAD_L) / plotW
+    return snapToCurve(Math.max(0, Math.min(1, tRaw)))
+  }
+
+  const xs =
+    renderMode === 'step'
+      ? curve.map((c) => c.threshold)
+      : [0, ...curve.map((c) => c.threshold)]
+  const ys =
+    renderMode === 'step'
+      ? curve.map((c) => c.pq)
+      : curve.length
+      ? [curve[0].pq, ...curve.map((c) => c.pq)]
+      : []
+
+  let linePath = ''
+  let areaPath = ''
+  if (xs.length > 0) {
+    if (renderMode === 'step' && xs.length >= 2) {
+      linePath = `M ${x(xs[0])} ${y(ys[1])} H ${x(xs[1])}`
+      for (let i = 1; i < xs.length - 1; i++) {
+        linePath += ` V ${y(ys[i + 1])} H ${x(xs[i + 1])}`
+      }
+      areaPath = `M ${x(xs[0])} ${y(0)} L ${x(xs[0])} ${y(ys[1])} H ${x(xs[1])}`
+      for (let i = 1; i < xs.length - 1; i++) {
+        areaPath += ` V ${y(ys[i + 1])} H ${x(xs[i + 1])}`
+      }
+      areaPath += ` L ${x(xs[xs.length - 1])} ${y(0)} Z`
+    } else if (renderMode !== 'step') {
+      linePath = xs
+        .map((t, i) => `${i === 0 ? 'M' : 'L'} ${x(t)} ${y(ys[i])}`)
+        .join(' ')
+      areaPath =
+        `M ${x(xs[0])} ${y(0)} ` +
+        xs.map((t, i) => `L ${x(t)} ${y(ys[i])}`).join(' ') +
+        ` L ${x(xs[xs.length - 1])} ${y(0)} Z`
+    }
+  }
+
+  let sortedApPath = ''
+  if (sortedApCurve.length > 0) {
+    const p0 = sortedApCurve[0]
+    sortedApPath = `M ${x(p0.threshold)} ${y(p0.ap)}`
+    for (let i = 1; i < sortedApCurve.length; i++) {
+      const p = sortedApCurve[i]
+      sortedApPath += ` H ${x(p.threshold)} V ${y(p.ap)}`
+    }
+    sortedApPath += ` H ${x(1)}`
+  }
+
+  const gridXs = [0, 0.2, 0.4, 0.6, 0.8, 1]
+  const gridYs = [0, 0.25, 0.5, 0.75, 1]
+
+  const activeThreshold = hoverThreshold ?? pinnedThreshold
+
+  const selectMode = (mode: ThresholdMode) => {
+    onThresholdModeChange(mode)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+  }
+
+  const selectMatcher = (kind: MatcherKind) => {
+    onMatcherChange(kind)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+  }
+
+  return (
+    <div className="w-full">
+      <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
+        <h3 className="font-semibold">PQ &amp; SortedAP vs IoU threshold</h3>
+        <div className="flex items-center gap-3 font-mono text-sm flex-wrap">
+          <span>
+            AUTC = <span className="text-lg font-bold">{autc.toFixed(3)}</span>
+          </span>
+          <span>
+            sortedAP ={' '}
+            <span className="text-lg font-bold">{sortedAp.toFixed(3)}</span>
+          </span>
+          {pinnedThreshold !== null && (
+            <span className="flex items-center gap-1">
+              <span style={{ color: PIN }}>Pinned @ {pinnedThreshold.toFixed(3)}</span>
+              <button
+                className="btn btn-ghost btn-xs"
+                onClick={onClearPin}
+                aria-label="Clear pinned threshold"
+              >
+                ✕
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-4 mb-2 text-xs font-mono opacity-80">
+        <span className="flex items-center gap-1.5">
+          <svg width="20" height="6" viewBox="0 0 20 6" aria-hidden="true">
+            <line x1="0" x2="20" y1="3" y2="3" stroke={ACCENT} strokeWidth="2" />
+          </svg>
+          PQ
+        </span>
+        <span className="flex items-center gap-1.5">
+          <svg width="20" height="6" viewBox="0 0 20 6" aria-hidden="true">
+            <line
+              x1="0"
+              x2="20"
+              y1="3"
+              y2="3"
+              stroke={SORTED_AP}
+              strokeWidth="2"
+              strokeDasharray="4 3"
+            />
+          </svg>
+          SortedAP
+        </span>
+      </div>
+      <div className="relative">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full h-auto bg-base-100 rounded-lg border border-base-300 cursor-crosshair"
+          onPointerMove={(e) => {
+            const t = thresholdFromClientX(e.clientX)
+            if (t !== null) onHover(t)
+          }}
+          onPointerLeave={() => onHover(null)}
+          onClick={(e) => {
+            const t = thresholdFromClientX(e.clientX)
+            if (t !== null) onPin(t)
+          }}
+        >
+          {gridYs.map((v) => (
+            <line
+              key={`gy-${v}`}
+              x1={PAD_L}
+              x2={W - PAD_R}
+              y1={y(v)}
+              y2={y(v)}
+              stroke="currentColor"
+              opacity="0.1"
+            />
+          ))}
+          {gridXs.map((t) => (
+            <line
+              key={`gx-${t}`}
+              x1={x(t)}
+              x2={x(t)}
+              y1={PAD_T}
+              y2={H - PAD_B}
+              stroke="currentColor"
+              opacity="0.1"
+            />
+          ))}
+
+          <path d={areaPath} fill={ACCENT} fillOpacity={0.2} />
+          <path d={linePath} fill="none" stroke={ACCENT} strokeWidth={2} />
+          <path
+            d={sortedApPath}
+            fill="none"
+            stroke={SORTED_AP}
+            strokeWidth={2}
+            strokeDasharray="4 3"
+          />
+
+          {pinnedThreshold !== null && (
+            <line
+              x1={x(pinnedThreshold)}
+              x2={x(pinnedThreshold)}
+              y1={PAD_T}
+              y2={H - PAD_B}
+              stroke={PIN}
+              strokeWidth={1.5}
+            />
+          )}
+          {hoverThreshold !== null && (
+            <line
+              x1={x(hoverThreshold)}
+              x2={x(hoverThreshold)}
+              y1={PAD_T}
+              y2={H - PAD_B}
+              stroke={HOVER}
+              strokeWidth={1}
+              strokeDasharray="4 3"
+            />
+          )}
+          {activeThreshold !== null && pqAtActive !== null && (
+            <>
+              <circle
+                cx={x(activeThreshold)}
+                cy={y(pqAtActive)}
+                r={4}
+                fill={hoverThreshold !== null ? HOVER : PIN}
+                stroke="white"
+                strokeWidth={1.5}
+              />
+              <text
+                x={x(activeThreshold) + 8}
+                y={y(pqAtActive) - 8}
+                fontSize="11"
+                fill="currentColor"
+                style={{ pointerEvents: 'none' }}
+              >
+                t={activeThreshold.toFixed(2)}, PQ={pqAtActive.toFixed(3)}
+              </text>
+            </>
+          )}
+
+          <line
+            x1={PAD_L}
+            x2={W - PAD_R}
+            y1={H - PAD_B}
+            y2={H - PAD_B}
+            stroke="currentColor"
+            opacity="0.5"
+          />
+          <line
+            x1={PAD_L}
+            x2={PAD_L}
+            y1={PAD_T}
+            y2={H - PAD_B}
+            stroke="currentColor"
+            opacity="0.5"
+          />
+
+          <g fontSize="10" fill="currentColor" opacity="0.7" style={{ pointerEvents: 'none' }}>
+            {gridXs.map((t) => (
+              <text key={`tx-${t}`} x={x(t)} y={H - PAD_B + 14} textAnchor="middle">
+                {t.toFixed(1)}
+              </text>
+            ))}
+            {gridYs.map((v) => (
+              <text key={`ty-${v}`} x={PAD_L - 6} y={y(v) + 3} textAnchor="end">
+                {v.toFixed(2)}
+              </text>
+            ))}
+            <text
+              x={PAD_L + plotW / 2}
+              y={H - 6}
+              textAnchor="middle"
+              fontSize="11"
+            >
+              IoU threshold
+            </text>
+            <text
+              x={16}
+              y={PAD_T + plotH / 2}
+              textAnchor="middle"
+              fontSize="11"
+              transform={`rotate(-90 16 ${PAD_T + plotH / 2})`}
+            >
+              PQ
+            </text>
+          </g>
+        </svg>
+
+        {showHint && (
+          <div className="pointer-events-none absolute top-1/4 left-2/3 flex items-center gap-1.5 text-xs opacity-70">
+            <svg
+              viewBox="0 0 24 24"
+              width="20"
+              height="20"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zM12 2.25V4.5m5.834.166l-1.591 1.591M20.25 10.5H18M7.757 14.743l-1.59 1.59M6 10.5H3.75m4.007-4.243l-1.59-1.59" />
+            </svg>
+            <span>Hover or click to pin</span>
+          </div>
+        )}
+
+        <div className="absolute top-1 right-1 z-10">
+          <div className="dropdown dropdown-end">
+            <div
+              tabIndex={0}
+              role="button"
+              aria-label="Chart settings"
+              className="btn btn-xs btn-ghost btn-circle"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                aria-hidden="true"
+                fill="currentColor"
+              >
+                <path d="M19.14 12.94a7.49 7.49 0 0 0 .05-.94 7.49 7.49 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 2h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.55-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.65 8.48a.5.5 0 0 0 .12.64l2.03 1.58c-.03.31-.05.62-.05.94s.02.63.05.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.14.24.43.34.69.24l2.39-.96c.5.39 1.04.7 1.63.94l.36 2.54c.05.24.26.42.5.42h3.84c.24 0 .45-.18.5-.42l.36-2.54c.59-.24 1.13-.55 1.63-.94l2.39.96c.26.1.55 0 .69-.24l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z" />
+              </svg>
+            </div>
+            <ul
+              tabIndex={0}
+              className="dropdown-content menu bg-base-200 rounded-box shadow border border-base-300 w-56 p-2 mt-1 z-20"
+            >
+              <li className="menu-title">IoU thresholds</li>
+              <li>
+                <button
+                  className={thresholdMode === 'discrete' ? 'menu-active' : ''}
+                  onClick={() => selectMode('discrete')}
+                >
+                  Discrete (0.05 step)
+                </button>
+              </li>
+              <li>
+                <button
+                  className={thresholdMode === 'scene' ? 'menu-active' : ''}
+                  onClick={() => selectMode('scene')}
+                >
+                  Scene steps
+                </button>
+              </li>
+              <li className="menu-title">Matching algorithm</li>
+              {(Object.keys(MATCHER_LABELS) as MatcherKind[]).map((kind) => (
+                <li key={kind}>
+                  <button
+                    className={matcherKind === kind ? 'menu-active' : ''}
+                    onClick={() => selectMatcher(kind)}
+                  >
+                    {MATCHER_LABELS[kind]}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
