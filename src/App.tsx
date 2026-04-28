@@ -28,7 +28,7 @@ const DEFAULT_STATE: SceneState = {
   preds: DEFAULT_PREDS,
   matcher: 'greedy',
   thresholdMode: 'scene',
-  showSortedAp: true,
+  showSortedAp: false,
 }
 
 const initialState: SceneState =
