@@ -6,11 +6,11 @@ export function Legend({ hasActiveThreshold }: { hasActiveThreshold: boolean }) 
             <>
                 <div className='flex items-center gap-1'>
                     <div className='rounded-full size-4 shrink-0' style={{ backgroundColor: COLORS.pred, opacity: OPACITIES.matched }} />
-                    <p>Matched Prediction (TP)</p>
+                    <p>Matched Prediction</p>
                 </div>
                 <div className='flex items-center gap-1'>
                     <div className='rounded-full size-4 shrink-0' style={{ backgroundColor: COLORS.ref, opacity: OPACITIES.matched }} />
-                    <p>Matched Reference</p>
+                    <p>Matched Reference (TP)</p>
                 </div>
                 <div className='flex items-center gap-1'>
                     <div className='rounded-full size-4 shrink-0' style={{ backgroundColor: COLORS.pred, opacity: OPACITIES.unmatched }} />

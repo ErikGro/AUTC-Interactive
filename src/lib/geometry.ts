@@ -1,5 +1,4 @@
 export type Circle = {
-  id: string
   x: number
   y: number
   r: number

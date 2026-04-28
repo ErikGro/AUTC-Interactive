@@ -6,8 +6,7 @@ import {
   mergedIoU,
 } from './geometry'
 
-const c = (x: number, y: number, r: number, id = `c-${x},${y},${r}`): Circle => ({
-  id,
+const c = (x: number, y: number, r: number): Circle => ({
   x,
   y,
   r,

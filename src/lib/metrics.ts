@@ -29,6 +29,8 @@ export type CurvePoint = {
 
 export type SortedAPPoint = { threshold: number; ap: number }
 
+export type ThresholdMode = 'discrete' | 'scene'
+
 export function computePQ(
   refs: Circle[],
   preds: Circle[],

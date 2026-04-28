@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Scene, type PredStatus, type RefStatus } from './components/Scene'
 import { OffsetSlider } from './components/OffsetSlider'
-import { CurveChart, type ThresholdMode } from './components/CurveChart'
+import { CurveChart } from './components/CurveChart'
 import { CalcReadout } from './components/CalcReadout'
 import { DEFAULT_PREDS, DEFAULT_REFS } from './lib/scene'
 import {
@@ -12,20 +12,58 @@ import {
   computeSortedAP,
   computeSortedAPCurve,
   sceneThresholds,
+  type ThresholdMode,
 } from './lib/metrics'
-import type { MatcherKind } from './lib/matchers'
+import { MATCHER_LABELS, type MatcherKind } from './lib/matchers'
 import type { Circle } from './lib/geometry'
 import { Legend } from './components/Legend'
+import {
+  parseSceneState,
+  serializeSceneState,
+  type SceneState,
+} from './lib/urlState'
+
+const DEFAULT_STATE: SceneState = {
+  refs: DEFAULT_REFS,
+  preds: DEFAULT_PREDS,
+  matcher: 'greedy',
+  thresholdMode: 'scene',
+  showSortedAp: true,
+}
+
+const initialState: SceneState =
+  typeof window === 'undefined'
+    ? DEFAULT_STATE
+    : parseSceneState(window.location.search, DEFAULT_STATE)
 
 export const App = () => {
-  const [refs] = useState<Circle[]>(DEFAULT_REFS)
-  const [preds, setPreds] = useState<Circle[]>(DEFAULT_PREDS)
+  const [refs, setRefs] = useState<Circle[]>(initialState.refs)
+  const [preds, setPreds] = useState<Circle[]>(initialState.preds)
   const [offset, setOffset] = useState(0)
   const [hoverThreshold, setHoverThreshold] = useState<number | null>(null)
   const [pinnedThreshold, setPinnedThreshold] = useState<number | null>(null)
-  const [thresholdMode, setThresholdMode] = useState<ThresholdMode>('scene')
-  const [matcherKind, setMatcherKind] = useState<MatcherKind>('greedy')
+  const [thresholdMode, setThresholdMode] = useState<ThresholdMode>(
+    initialState.thresholdMode,
+  )
+  const [matcherKind, setMatcherKind] = useState<MatcherKind>(
+    initialState.matcher,
+  )
+  const [showSortedAp, setShowSortedAp] = useState(initialState.showSortedAp)
   const [hasEverPinned, setHasEverPinned] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+
+  useEffect(() => {
+    if (isDragging) return
+    const params = serializeSceneState({
+      refs,
+      preds,
+      matcher: matcherKind,
+      thresholdMode,
+      showSortedAp,
+    })
+    const newUrl = `${window.location.pathname}?${params.toString()}${window.location.hash}`
+    window.history.replaceState(null, '', newUrl)
+  }, [refs, preds, matcherKind, thresholdMode, showSortedAp, isDragging])
 
   const effectivePreds = useMemo(
     () => preds.map((c) => ({ ...c, x: c.x + offset })),
@@ -86,11 +124,8 @@ export const App = () => {
     }
   }, [activeStats, refs, preds])
 
-  const handlePredChange = (id: string, x: number, y: number) => {
-    setPreds((prev) => prev.map((c) => (c.id === id ? { ...c, x, y } : c)))
-  }
-
   const handleReset = () => {
+    setRefs(DEFAULT_REFS)
     setPreds(DEFAULT_PREDS)
     setOffset(0)
     setPinnedThreshold(null)
@@ -102,10 +137,9 @@ export const App = () => {
       <div className="max-w-6xl mx-auto">
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className='text-xl mb-2'>Interactive AUTC</h1>
+            <h1 className='text-xl mb-2'>Interactive Panoptic Quality</h1>
             <p className="text-sm">
-              Drag the filled prediction circles or use the offset slider.
-              Hover the chart to preview a threshold; click to pin.
+              An interactive demo of Panoptic Quality. Edit the scene, pick a matcher, share the URL.   
             </p>
           </div>
           <a
@@ -130,11 +164,40 @@ export const App = () => {
               offset={offset}
               refStatuses={refStatuses}
               predStatuses={predStatuses}
-              onPredChange={handlePredChange}
+              onRefsChange={setRefs}
+              onPredsChange={setPreds}
+              onDraggingChange={setIsDragging}
             />
             <OffsetSlider value={offset} onChange={setOffset} />
-            <div className='mt-1'>
-              <button className="btn btn-soft tn-sm" onClick={handleReset}>
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className="text-xs shrink-0 hidden sm:inline">
+                  Matching Algorithm
+                </label>
+                <div
+                  role="radiogroup"
+                  aria-label="Matching algorithm"
+                  className="join"
+                >
+                  {(Object.keys(MATCHER_LABELS) as MatcherKind[]).map((kind) => (
+                    <button
+                      key={kind}
+                      role="radio"
+                      aria-checked={matcherKind === kind}
+                      className={`join-item btn btn-xs sm:btn-sm ${
+                        matcherKind === kind ? 'btn-active btn-primary' : 'btn-soft'
+                      }`}
+                      onClick={() => setMatcherKind(kind)}
+                    >
+                      {MATCHER_LABELS[kind]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                className="btn btn-xs sm:btn-sm btn-soft"
+                onClick={handleReset}
+              >
                 Reset scene
               </button>
             </div>
@@ -152,8 +215,8 @@ export const App = () => {
               showHint={!hasEverPinned}
               thresholdMode={thresholdMode}
               onThresholdModeChange={setThresholdMode}
-              matcherKind={matcherKind}
-              onMatcherChange={setMatcherKind}
+              showSortedAp={showSortedAp}
+              onShowSortedApChange={setShowSortedAp}
               onHover={setHoverThreshold}
               onPin={(t) => {
                 setPinnedThreshold(t)

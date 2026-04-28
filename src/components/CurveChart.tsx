@@ -1,8 +1,7 @@
 import { useRef } from 'react'
-import type { CurvePoint, SortedAPPoint } from '../lib/metrics'
-import { MATCHER_LABELS, type MatcherKind } from '../lib/matchers'
+import type { CurvePoint, SortedAPPoint, ThresholdMode } from '../lib/metrics'
 
-export type ThresholdMode = 'discrete' | 'scene'
+export type { ThresholdMode }
 
 type Props = {
   curve: CurvePoint[]
@@ -16,8 +15,8 @@ type Props = {
   showHint: boolean
   thresholdMode: ThresholdMode
   onThresholdModeChange: (mode: ThresholdMode) => void
-  matcherKind: MatcherKind
-  onMatcherChange: (kind: MatcherKind) => void
+  showSortedAp: boolean
+  onShowSortedApChange: (show: boolean) => void
   onHover: (t: number | null) => void
   onPin: (t: number) => void
   onClearPin: () => void
@@ -46,8 +45,8 @@ export const CurveChart = ({
   showHint,
   thresholdMode,
   onThresholdModeChange,
-  matcherKind,
-  onMatcherChange,
+  showSortedAp,
+  onShowSortedApChange,
   onHover,
   onPin,
   onClearPin,
@@ -142,23 +141,22 @@ export const CurveChart = ({
     ;(document.activeElement as HTMLElement | null)?.blur()
   }
 
-  const selectMatcher = (kind: MatcherKind) => {
-    onMatcherChange(kind)
-    ;(document.activeElement as HTMLElement | null)?.blur()
-  }
-
   return (
     <div className="w-full">
       <div className="flex items-baseline justify-between mb-2 gap-2 flex-wrap">
-        <h3 className="font-semibold">PQ &amp; SortedAP vs IoU threshold</h3>
+        <h3 className="font-semibold">
+          {showSortedAp ? 'PQ & SortedAP vs IoU threshold' : 'PQ vs IoU threshold'}
+        </h3>
         <div className="flex items-center gap-3 font-mono text-sm flex-wrap">
           <span>
             AUTC = <span className="text-lg font-bold">{autc.toFixed(3)}</span>
           </span>
-          <span>
-            sortedAP ={' '}
-            <span className="text-lg font-bold">{sortedAp.toFixed(3)}</span>
-          </span>
+          {showSortedAp && (
+            <span>
+              sortedAP ={' '}
+              <span className="text-lg font-bold">{sortedAp.toFixed(3)}</span>
+            </span>
+          )}
           {pinnedThreshold !== null && (
             <span className="flex items-center gap-1">
               <span style={{ color: PIN }}>Pinned @ {pinnedThreshold.toFixed(3)}</span>
@@ -180,20 +178,22 @@ export const CurveChart = ({
           </svg>
           PQ
         </span>
-        <span className="flex items-center gap-1.5">
-          <svg width="20" height="6" viewBox="0 0 20 6" aria-hidden="true">
-            <line
-              x1="0"
-              x2="20"
-              y1="3"
-              y2="3"
-              stroke={SORTED_AP}
-              strokeWidth="2"
-              strokeDasharray="4 3"
-            />
-          </svg>
-          SortedAP
-        </span>
+        {showSortedAp && (
+          <span className="flex items-center gap-1.5">
+            <svg width="20" height="6" viewBox="0 0 20 6" aria-hidden="true">
+              <line
+                x1="0"
+                x2="20"
+                y1="3"
+                y2="3"
+                stroke={SORTED_AP}
+                strokeWidth="2"
+                strokeDasharray="4 3"
+              />
+            </svg>
+            SortedAP
+          </span>
+        )}
       </div>
       <div className="relative">
         <svg
@@ -235,13 +235,15 @@ export const CurveChart = ({
 
           <path d={areaPath} fill={ACCENT} fillOpacity={0.2} />
           <path d={linePath} fill="none" stroke={ACCENT} strokeWidth={2} />
-          <path
-            d={sortedApPath}
-            fill="none"
-            stroke={SORTED_AP}
-            strokeWidth={2}
-            strokeDasharray="4 3"
-          />
+          {showSortedAp && (
+            <path
+              d={sortedApPath}
+              fill="none"
+              stroke={SORTED_AP}
+              strokeWidth={2}
+              strokeDasharray="4 3"
+            />
+          )}
 
           {pinnedThreshold !== null && (
             <line
@@ -392,17 +394,18 @@ export const CurveChart = ({
                   Scene steps
                 </button>
               </li>
-              <li className="menu-title">Matching algorithm</li>
-              {(Object.keys(MATCHER_LABELS) as MatcherKind[]).map((kind) => (
-                <li key={kind}>
-                  <button
-                    className={matcherKind === kind ? 'menu-active' : ''}
-                    onClick={() => selectMatcher(kind)}
-                  >
-                    {MATCHER_LABELS[kind]}
-                  </button>
-                </li>
-              ))}
+              <li className="menu-title">Curves</li>
+              <li>
+                <label className="cursor-pointer flex items-center justify-between gap-2">
+                  <span>Show SortedAP</span>
+                  <input
+                    type="checkbox"
+                    className="toggle toggle-sm"
+                    checked={showSortedAp}
+                    onChange={(e) => onShowSortedApChange(e.target.checked)}
+                  />
+                </label>
+              </li>
             </ul>
           </div>
         </div>

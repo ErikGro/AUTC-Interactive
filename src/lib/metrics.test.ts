@@ -11,12 +11,7 @@ import {
   sceneThresholds,
 } from './metrics'
 
-const c = (
-  x: number,
-  y: number,
-  r: number,
-  id = `c-${x},${y},${r}`,
-): Circle => ({ id, x, y, r })
+const c = (x: number, y: number, r: number): Circle => ({ x, y, r })
 
 describe('defaultThresholds', () => {
   it('produces evenly spaced thresholds from the step up to 1.0', () => {
