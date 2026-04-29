@@ -4,6 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/AUTC-Interactive/',
+  base: '/Interactive-Panoptic-Quality/',
   plugins: [react(), tailwindcss()],
 })
